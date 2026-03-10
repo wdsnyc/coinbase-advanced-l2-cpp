@@ -27,6 +27,7 @@ It connects to `wss://advanced-trade-ws.coinbase.com`, authenticates using a JWT
 - CMake 3.18+
 - OpenSSL (for crypto / ECDSA signing) or Botan
 - pybind11
+- coinbase-advanced-py
 - Boost async io websockets
 - jsoncpp
 
