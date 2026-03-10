@@ -35,5 +35,5 @@ It connects to `wss://advanced-trade-ws.coinbase.com`, authenticates using a JWT
 ### Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/coinbase-advanced-l2-cpp.git
+git clone https://github.com/wdsnyc/coinbase-advanced-l2-cpp.git
 cd coinbase-advanced-l2-cpp
