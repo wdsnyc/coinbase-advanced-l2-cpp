@@ -24,12 +24,13 @@ constexpr const char* api_secret_pem = "/api_secret.pem";
 
 namespace coinbase {
 
-    static Json::Value GetSubscribeMsg(const std::string& secrets_dir)
+    static Json::Value GetSubscribeMsg(const std::string& symbol_name,
+                                       const std::string& secrets_dir)
     {
         Json::Value root;
 
         std::string channel_name = "level2";
-        std::vector<std::string> crypto_ids = {"BTC-USD"};
+        std::vector<std::string> crypto_ids{symbol_name};
 
         root["type"] = Json::Value("subscribe");
 

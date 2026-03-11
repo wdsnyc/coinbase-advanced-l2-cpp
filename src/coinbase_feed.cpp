@@ -29,10 +29,15 @@ using namespace std;
 void PrintHelp()
 {
    std::cout <<
-       "--secrets_dir   Required argument. Directory containing                              \n"
-       "                         api_key.txt and api_secret.pem                              \n"
+       "--symbol:       <symbol name>                                                        \n"
+       "                    e.g. BTC-USD                                                     \n"
        "                                                                                     \n"
-       "                Format of coinbase api_key.txt                                       \n"
+       "--secrets_dir:  <path to dir>                                                        \n"
+       "                    Required argument. Directory containing api_key.txt              \n"
+       "                    and api_secret.pem                                               \n"
+       "                                                                                     \n"
+       "                See API Key Management under Coinbase account settings. Format of    \n"
+       "                coinbase api_key.txt                                                 \n"
        "                                                                                     \n"
        "                    organizations/{organization_id}/apiKeys/{key_uuid}               \n"
        "                                                                                     \n"
@@ -51,8 +56,9 @@ void PrintHelp()
        "                    Lines contain exactly 64 characters                              \n"
        "                    No quotes                                                        \n"
        "                                                                                     \n"
-       "--snapshots:    process snapshot messages\n"
-       "--help:         Show help\n";
+       "--snapshots:    process snapshot messages                                            \n"
+       "                                                                                     \n"
+       "--help:         Show help                                                            \n";
     exit(1);
 }
 
@@ -66,11 +72,14 @@ int main(int argc, char** argv)
 {
     bool process_snapshots = false;
     string secrets_dir;
+    string symbol_name;
 
-    auto process_command_line_args = [&process_snapshots, &secrets_dir, &argc, &argv]()
+    auto process_command_line_args =
+        [&process_snapshots, &symbol_name, &secrets_dir, &argc, &argv]()
     {
         const char* const short_opts = "e:sh";
         const option long_opts[] = {
+            {"symbol",      required_argument, nullptr, 'y'},
             {"secrets_dir", required_argument, nullptr, 'e'},
             {"snapshots",   no_argument,       nullptr, 's'},
             {"help",        no_argument,       nullptr, 'h'},
@@ -86,6 +95,9 @@ int main(int argc, char** argv)
 
             switch (opt)
             {
+                case 'y':
+                    symbol_name = optarg;
+                    break;
                 case 'e':
                     secrets_dir = optarg;
                     break;
@@ -103,16 +115,16 @@ int main(int argc, char** argv)
 
     process_command_line_args();
 
-    if (secrets_dir.empty())
+    if (secrets_dir.empty() || symbol_name.empty())
     {
         PrintHelp();
     }
 
-    OrderBook orderBook;
+    OrderBook orderBook(symbol_name);
 
     try
     {
-        Json::Value root = coinbase::GetSubscribeMsg(secrets_dir);
+        Json::Value root = coinbase::GetSubscribeMsg(symbol_name, secrets_dir);
         Json::FastWriter fastWriter;
         string subscribe_msg = fastWriter.write(root);
         cout << "-------------------------------------" << endl;

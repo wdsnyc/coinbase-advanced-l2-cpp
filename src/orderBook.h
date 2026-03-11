@@ -9,8 +9,11 @@ struct OrderBook
     using BidBook = std::map<double, double, std::greater<double>>;
     using AskBook = std::map<double, double, std::less<double>>;
 
-    BidBook m_bids;
-    AskBook m_asks;
+    std::string  m_symbol;
+    BidBook      m_bids;
+    AskBook      m_asks;
+
+    OrderBook(const std::string& symbol) : m_symbol(symbol) {}
 
     int64_t getTime(const std::string& eventTime)
     {
@@ -70,6 +73,14 @@ struct OrderBook
         return spread;
     }
 
+    std::tuple<std::string,std::string> getSymbolNameAndCurrency(const std::string symbol)
+    {
+        std::string::size_type n = symbol.find("-");
+        std::string name = symbol.substr(0, n);
+        std::string currency = symbol.substr(n+1);
+        return std::tuple{name,currency};
+    }
+
     void dump(size_t num_levels = UINT_MAX)
     {
         if (m_bids.size() == 0 || m_asks.size() == 0) return;
@@ -81,7 +92,8 @@ struct OrderBook
         std::cout << "Asks size: " << m_asks.size() << std::endl;
         std::cout << "Bids size: " << m_bids.size() << std::endl;
 
-        std::cout << std::setw(10) << "price (USD)" << std::setw(20) << "qty (BTC)" << std::endl;
+        std::tuple t = getSymbolNameAndCurrency(m_symbol);
+        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;        
         std::cout
             << std::setfill('-') << std::setw(10) << "-"
             << std::setfill(' ') << std::setw(10) << " "
@@ -117,7 +129,8 @@ struct OrderBook
         if (m_bids.size() == 0 || m_asks.size() == 0) return;
 
         std::cout << "************** TOP OF BOOK **************\n";
-        std::cout << std::setw(10) << "price (USD)" << std::setw(20) << "qty (BTC)" << std::endl;
+        std::tuple t = getSymbolNameAndCurrency(m_symbol);
+        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;
         std::cout
             << std::setfill('-') << std::setw(10) << "-"
             << std::setfill(' ') << std::setw(10) << " "
