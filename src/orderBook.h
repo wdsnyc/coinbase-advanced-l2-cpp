@@ -5,15 +5,47 @@
 
 struct OrderBook
 {
-    //                       price   qty
+                          // price   qty
     using BidBook = std::map<double, double, std::greater<double>>;
     using AskBook = std::map<double, double, std::less<double>>;
+    using L2PriceBook =  std::pair<BidBook, AskBook>;
+    
+    std::string                                  m_symbol;
+    std::vector<std::string>                     m_symbolList;
+    std::unordered_map<std::string, L2PriceBook> m_priceMap;
 
-    std::string  m_symbol;
-    BidBook      m_bids;
-    AskBook      m_asks;
+    OrderBook(const std::vector<std::string>& symbol_list)
+        : m_symbolList(symbol_list)
+    {
+        for (const auto& sym: m_symbolList)
+        {
+            m_priceMap.emplace(
+                std::piecewise_construct,
+                std::forward_as_tuple(sym),
+                std::forward_as_tuple(BidBook{}, AskBook{}));
+        }
+        m_symbol = m_symbolList.front();
+    }
 
-    OrderBook(const std::string& symbol) : m_symbol(symbol) {}
+    const std::vector<std::string> getSymbolList() const
+    {
+        return m_symbolList;
+    }
+    
+    bool setSymbol(const std::string& symbol)
+    {
+        auto iter = find(m_symbolList.begin(), m_symbolList.end(), symbol);
+        if (iter != m_symbolList.end())
+        {
+            m_symbol = *iter;
+            return true;            
+        }
+        else
+        {            
+            std::cerr << "Symbol not in symbol_list" << std::endl;
+            return false;
+        }
+    }
 
     int64_t getTime(const std::string& eventTime)
     {
@@ -38,36 +70,55 @@ struct OrderBook
     }
 
     template<typename Book>
-    void insert(Book& book, const Json::Value& price, const Json::Value& quantity, const Json::Value& eventTime)
+    void bookAdd(Book& book, double& px, double& qty)
     {
-        double px    = atof(price.asString().c_str());
-        double qty   = atof(quantity.asString().c_str());
-
-        [[maybe_unused]] int64_t time = getTime(eventTime.asString());
-
         auto iter = book.find(px);
-        if ( iter != book.end())
+        if (iter != book.end())
         {
             if (qty == 0.0)
-            {
                 book.erase(iter);
-            }
             else
                 iter->second = qty;
         }
         else
         {
             if (qty != 0.0)
-            {
-                book.insert(std::make_pair(px, qty));
-            }
+                book.emplace(px, qty);
         }
     }
 
-    double printSpread()
+
+    bool insertEvent(const Json::Value& symbol, const Json::Value& side, const Json::Value& price, const Json::Value& quantity, const Json::Value& eventTime)
     {
-        auto ask_px = m_asks.begin()->first;
-        auto bid_px = m_bids.begin()->first;
+        std::string product_id = symbol.asString();
+        double px              = atof(price.asString().c_str());
+        double qty             = atof(quantity.asString().c_str());
+
+        auto iter = m_priceMap.find(product_id);
+
+        if (iter == m_priceMap.end())
+        {
+            return false;
+        }
+
+        [[maybe_unused]] int64_t time = getTime(eventTime.asString());
+
+        auto& [bids, asks] = iter->second;
+
+        if (side == "bid")
+            bookAdd(bids, px, qty);
+        else if (side == "offer")
+            bookAdd(asks, px, qty);
+        else
+            return false;
+
+        return true;
+    }
+
+    double printSpread(const BidBook& bids, const AskBook& asks)
+    {
+        auto ask_px = asks.begin()->first;
+        auto bid_px = bids.begin()->first;
         double spread = ask_px - bid_px;
         std::cout << std::setfill(' ') << std::setw(20) << "Spread : " << ask_px - bid_px << std::endl;
         return spread;
@@ -83,50 +134,58 @@ struct OrderBook
 
     void dump(size_t num_levels = UINT_MAX)
     {
-        if (m_bids.size() == 0 || m_asks.size() == 0) return;
+        const L2PriceBook& pb = m_priceMap[m_symbol];
+        const BidBook& bids = pb.first;
+        const AskBook& asks = pb.second;
+
+        if (bids.size() == 0 || asks.size() == 0) return;
 
         std::cout << "\e[2J\e[1;1H"; // Clears screen and moves cursor to top-left
         std::cout << "************** ORDER BOOK ***************\n";
         std::cout << std::fixed;
 
-        std::cout << "Asks size: " << m_asks.size() << std::endl;
-        std::cout << "Bids size: " << m_bids.size() << std::endl;
+        std::cout << "Asks size: " << asks.size() << std::endl;
+        std::cout << "Bids size: " << bids.size() << std::endl;
 
         std::tuple t = getSymbolNameAndCurrency(m_symbol);
-        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;        
+        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;
         std::cout
             << std::setfill('-') << std::setw(10) << "-"
             << std::setfill(' ') << std::setw(10) << " "
             << std::setfill('-') << std::setw(10) << "-" << std::setfill(' ') << std::endl;
 
-        auto iter = m_asks.rbegin();
+        auto iter = asks.rbegin();
         std::cout << std::setprecision(2) << std::setw(10) << iter->first << std::setw(20) << std::setprecision(8) << iter->second << "  LARGEST ASK\n";
-        if (m_asks.size() > num_levels)
-            std::advance(iter, m_asks.size() - num_levels);
-        while (iter != m_asks.rend())
+        if (asks.size() > num_levels)
+            std::advance(iter, asks.size() - num_levels);
+        while (iter != asks.rend())
         {
             std::cout << std::setprecision(2) << std::setw(10) << iter->first << std::setw(20) << std::setprecision(8) << iter->second << "  ASK\n";
             iter++;
         }
 
-        printSpread();
+        printSpread(bids, asks);
 
         size_t num_bids = 1;
 
-        for (auto iter: m_bids)
+        for (auto iter: bids)
         {
             std::cout << std::setprecision(2) << std::setw(10) << iter.first << std::setw(20) << std::setprecision(8) << iter.second << "  BID\n";
             if (num_bids++ == num_levels)
                 break;
         }
-        auto smallest_bid = std::prev(m_bids.end());
+        auto smallest_bid = std::prev(bids.end());
         std::cout << std::setprecision(2) << std::setw(10) << smallest_bid->first << std::setw(20) << std::setprecision(8) << smallest_bid->second << "  SMALLEST BID\n";
         std::cout << "*****************************************\n";
     }
 
     void topOfBook()
     {
-        if (m_bids.size() == 0 || m_asks.size() == 0) return;
+        const L2PriceBook& pb = m_priceMap[m_symbol];
+        const BidBook& bids = pb.first;
+        const AskBook& asks = pb.second;
+
+        if (bids.size() == 0 || asks.size() == 0) return;
 
         std::cout << "************** TOP OF BOOK **************\n";
         std::tuple t = getSymbolNameAndCurrency(m_symbol);
@@ -136,12 +195,12 @@ struct OrderBook
             << std::setfill(' ') << std::setw(10) << " "
             << std::setfill('-') << std::setw(10) << "-" << std::setfill(' ') << std::endl;
 
-        auto bid = m_bids.begin();
-        auto ask = m_asks.begin();
+        auto bid = bids.begin();
+        auto ask = asks.begin();
 
-        std::cout << std::setprecision(2) << std::setw(10) << ask->first << std::setw(20) << std::setprecision(8) << ask->second << "  ASK\n";
-        printSpread();
-        std::cout << std::setprecision(2) << std::setw(10) << bid->first << std::setw(20) << std::setprecision(8) << bid->second << "  BID\n";
+        std::cout << std::setprecision(4) << std::setw(10) << ask->first << std::setw(20) << std::setprecision(8) << ask->second << "  ASK\n";
+        printSpread(bids, asks);
+        std::cout << std::setprecision(4) << std::setw(10) << bid->first << std::setw(20) << std::setprecision(8) << bid->second << "  BID\n";
         std::cout << "*****************************************\n";
     }
 };
