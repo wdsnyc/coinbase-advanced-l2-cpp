@@ -5,11 +5,15 @@
 
 struct OrderBook
 {
-                          // price   qty
-    using BidBook = std::map<double, double, std::greater<double>>;
+    using BidBook = std::map<double/*px*/, double/*qty*/, std::greater<double>>;
     using AskBook = std::map<double, double, std::less<double>>;
-    using L2PriceBook =  std::pair<BidBook, AskBook>;
-    
+
+    struct L2PriceBook
+    {
+        BidBook bidbook;
+        AskBook askbook;
+    };
+
     std::string                                  m_symbol;
     std::vector<std::string>                     m_symbolList;
     std::unordered_map<std::string, L2PriceBook> m_priceMap;
@@ -31,17 +35,17 @@ struct OrderBook
     {
         return m_symbolList;
     }
-    
+
     bool setSymbol(const std::string& symbol)
     {
         auto iter = find(m_symbolList.begin(), m_symbolList.end(), symbol);
         if (iter != m_symbolList.end())
         {
             m_symbol = *iter;
-            return true;            
+            return true;
         }
         else
-        {            
+        {
             std::cerr << "Symbol not in symbol_list" << std::endl;
             return false;
         }
@@ -134,9 +138,9 @@ struct OrderBook
 
     void dump(size_t num_levels = UINT_MAX)
     {
-        const L2PriceBook& pb = m_priceMap[m_symbol];
-        const BidBook& bids = pb.first;
-        const AskBook& asks = pb.second;
+        const L2PriceBook& l2_book = m_priceMap[m_symbol];
+        const BidBook& bids = l2_book.bidbook;
+        const AskBook& asks = l2_book.askbook;
 
         if (bids.size() == 0 || asks.size() == 0) return;
 
@@ -181,9 +185,9 @@ struct OrderBook
 
     void topOfBook()
     {
-        const L2PriceBook& pb = m_priceMap[m_symbol];
-        const BidBook& bids = pb.first;
-        const AskBook& asks = pb.second;
+        const L2PriceBook& l2_book = m_priceMap[m_symbol];
+        const BidBook& bids = l2_book.bidbook;
+        const AskBook& asks = l2_book.askbook;
 
         if (bids.size() == 0 || asks.size() == 0) return;
 
@@ -204,4 +208,3 @@ struct OrderBook
         std::cout << "*****************************************\n";
     }
 };
-
