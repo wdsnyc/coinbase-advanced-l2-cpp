@@ -1,9 +1,20 @@
-#include "coinbase_feed.h"
+#include <iostream>
+#include <vector>
+#include <string>
+#include <cstdlib>
+#include <ranges>
+#include <string_view>
 #include <getopt.h>
+#include <exception>
+
+#include <pybind11/embed.h>
+#include <pybind11/pytypes.h>
+
+#include "coinbase_feed.h"
 
 void PrintHelp()
 {
-   std::cout <<
+    std::cout <<
        "--symbol_list:  List of symbols separated by commas, e.g \"BTC-USD,ETH-USD\". On     \n"
        "                    start-up the order book of first symbol in symbol list will be   \n"
        "                    displayed. Symbol and order book can be switched by hitting      \n"
@@ -42,15 +53,15 @@ void PrintHelp()
 int main(int argc, char** argv)
 {
     bool process_snapshots = false;
-    string secrets_dir;
-    vector<string> symbol_list;
+    std::string secrets_dir;
+    std::vector<std::string> symbol_list;
 
-    auto split = [](string_view str, char delimiter = ',')
+    auto split = [](std::string_view str, char delimiter = ',')
     {
         // c++20 split string by delim
-        auto split_view = str | views::split(delimiter);
+        auto split_view = str | std::views::split(delimiter);
 
-        vector<string> result;
+        std::vector<std::string> result;
 
         for (auto subrange : split_view) {
             result.emplace_back(subrange.begin(), subrange.end());
@@ -107,7 +118,25 @@ int main(int argc, char** argv)
 
     coinbase_feed feed(symbol_list, secrets_dir, process_snapshots);
 
-    int status = feed.run();
+    int status;
+
+    // false = skip python signal hanlders registration
+    py::scoped_interpreter guard{false};
+
+    try
+    {
+        status = feed.run();
+    }
+    catch (const py::error_already_set& e)
+    {
+        std::cerr << "Python error: " << e.what() << "\n";
+        status = 1;
+    }
+    catch (const std::exception& e)
+    {
+        std::cerr << "Error: " << e.what() << "\n";
+        status = 1;
+    }
 
     return status;
 }

@@ -1,8 +1,16 @@
 #pragma once
 
-#include <bits/stdc++.h>
-#include <json/json.h>
-#include <pybind11/embed.h>
+#include <string>
+#include <fstream>
+#include <vector>
+#include <ios>
+#include <iterator>
+#include <cstddef>
+
+#include <json/value.h>
+
+#include <pybind11/pybind11.h>
+#include <pybind11/pytypes.h>
 
 namespace py = pybind11;
 
@@ -43,21 +51,19 @@ namespace coinbase {
         root["product_ids"] = product_ids;
         root["channel"] = "level2";
 
-        py::scoped_interpreter guard{};
-        
         py::module_ jwt_generator = py::module_::import("coinbase.jwt_generator");
-        
+
         std::string api_key;
         std::ifstream api_key_ifstrm(secrets_dir + api_key_txt);
         api_key_ifstrm >> api_key;
-        
+
         std::ifstream api_secret_ifstrm(secrets_dir + api_secret_pem, std::ios::in | std::ios::binary);
         std::string api_secret((std::istreambuf_iterator<char>(api_secret_ifstrm)),
                                std::istreambuf_iterator<char>());
-        
+
         py::object jwt_token = jwt_generator.attr("build_ws_jwt")(api_key, api_secret);
         std::string token = py::str(jwt_token);
-        
+
         root["jwt"] = token;
 
         return root;

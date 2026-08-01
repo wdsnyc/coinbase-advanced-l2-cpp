@@ -1,6 +1,23 @@
 #pragma once
 
-#include <bits/stdc++.h>
+#include <atomic>
+#include <map>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <optional>
+#include <iostream>
+#include <iomanip>
+#include <utility>
+#include <tuple>
+#include <sstream>
+#include <climits>
+#include <ctime>
+#include <functional>
+#include <cstdint>
+#include <cstdlib>
+#include <iterator>
+
 #include <json/value.h>
 
 struct OrderBook
@@ -14,42 +31,45 @@ struct OrderBook
         AskBook askbook;
     };
 
-    std::string                                  m_symbol;
-    std::vector<std::string>                     m_symbolList;
-    std::unordered_map<std::string, L2PriceBook> m_priceMap;
+    std::atomic<int>                      m_symbolId;
+    std::unordered_map<int, L2PriceBook>  m_priceMap;
+    std::unordered_map<std::string, int>  m_symbolToId;
+    std::vector<std::string>              m_idToSymbol;
 
     OrderBook(const std::vector<std::string>& symbol_list)
-        : m_symbolList(symbol_list)
+        : m_idToSymbol(symbol_list)
     {
-        for (const auto& sym: m_symbolList)
+        int symbolId = 0;
+        for (const auto &sym : symbol_list)
+        {
+            m_symbolToId[sym] = symbolId++;
+        }
+
+        for (const auto& [sym, id]: m_symbolToId)
         {
             m_priceMap.emplace(
                 std::piecewise_construct,
-                std::forward_as_tuple(sym),
+                std::forward_as_tuple(id),
                 std::forward_as_tuple(BidBook{}, AskBook{}));
         }
-        m_symbol = m_symbolList.front();
+        m_symbolId = 0;
     }
 
-    const std::vector<std::string> getSymbolList() const
-    {
-        return m_symbolList;
-    }
+    void setSymbolId(int symbolId) { m_symbolId.store(symbolId, std::memory_order_release); }
 
-    bool setSymbol(const std::string& symbol)
+    int getSymbolId(void) { return m_symbolId.load(std::memory_order_acquire); }
+
+    std::optional<int> findSymbolId(const std::string& sym) const
     {
-        auto iter = find(m_symbolList.begin(), m_symbolList.end(), symbol);
-        if (iter != m_symbolList.end())
-        {
-            m_symbol = *iter;
-            return true;
-        }
+        if (auto iter = m_symbolToId.find(sym); iter != m_symbolToId.end())
+            return iter->second;
         else
-        {
-            std::cerr << "Symbol not in symbol_list" << std::endl;
-            return false;
-        }
+            return std::nullopt;
     }
+
+    const std::vector<std::string> &getSymbolList() const { return m_idToSymbol; }
+
+    const std::string& getSymbolStr(int id) { return m_idToSymbol.at(id); }
 
     int64_t getTime(const std::string& eventTime)
     {
@@ -94,11 +114,14 @@ struct OrderBook
 
     bool insertEvent(const Json::Value& symbol, const Json::Value& side, const Json::Value& price, const Json::Value& quantity, const Json::Value& eventTime)
     {
-        std::string product_id = symbol.asString();
-        double px              = atof(price.asString().c_str());
-        double qty             = atof(quantity.asString().c_str());
+        std::optional<int> product_id = findSymbolId(symbol.asString());
+        double px                     = atof(price.asString().c_str());
+        double qty                    = atof(quantity.asString().c_str());
 
-        auto iter = m_priceMap.find(product_id);
+        if (!product_id.has_value())
+            return false;
+
+        auto iter = m_priceMap.find(product_id.value());
 
         if (iter == m_priceMap.end())
         {
@@ -128,17 +151,25 @@ struct OrderBook
         return spread;
     }
 
-    std::tuple<std::string,std::string> getSymbolNameAndCurrency(const std::string symbol)
+    struct Product
     {
+        std::string name;
+        std::string currency;
+    };
+
+    Product getSymbolNameAndCurrency(int symbolId)
+    {
+        const std::string& symbol = getSymbolStr(symbolId);
+
         std::string::size_type n = symbol.find("-");
         std::string name = symbol.substr(0, n);
         std::string currency = symbol.substr(n+1);
-        return std::tuple{name,currency};
+        return Product{name,currency};
     }
 
-    void dump(size_t num_levels = UINT_MAX)
+    void dump(int symbolId, size_t num_levels = UINT_MAX)
     {
-        const L2PriceBook& l2_book = m_priceMap[m_symbol];
+        const L2PriceBook& l2_book = m_priceMap.at(symbolId);
         const BidBook& bids = l2_book.bidbook;
         const AskBook& asks = l2_book.askbook;
 
@@ -151,8 +182,8 @@ struct OrderBook
         std::cout << "Asks size: " << asks.size() << std::endl;
         std::cout << "Bids size: " << bids.size() << std::endl;
 
-        std::tuple t = getSymbolNameAndCurrency(m_symbol);
-        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;
+        Product p = getSymbolNameAndCurrency(symbolId);
+        std::cout << std::setw(10) << "price (" << p.currency << ")" << std::setw(14) << "qty (" << p.name << ")" << std::endl;
         std::cout
             << std::setfill('-') << std::setw(10) << "-"
             << std::setfill(' ') << std::setw(10) << " "
@@ -183,17 +214,17 @@ struct OrderBook
         std::cout << "*****************************************\n";
     }
 
-    void topOfBook()
+    void topOfBook(int symbolId)
     {
-        const L2PriceBook& l2_book = m_priceMap[m_symbol];
+        const L2PriceBook& l2_book = m_priceMap.at(symbolId);
         const BidBook& bids = l2_book.bidbook;
         const AskBook& asks = l2_book.askbook;
 
         if (bids.size() == 0 || asks.size() == 0) return;
 
         std::cout << "************** TOP OF BOOK **************\n";
-        std::tuple t = getSymbolNameAndCurrency(m_symbol);
-        std::cout << std::setw(10) << "price (" << get<1>(t) << ")" << std::setw(14) << "qty (" << get<0>(t) << ")" << std::endl;
+        Product p = getSymbolNameAndCurrency(symbolId);
+        std::cout << std::setw(10) << "price (" << p.currency << ")" << std::setw(14) << "qty (" << p.name << ")" << std::endl;
         std::cout
             << std::setfill('-') << std::setw(10) << "-"
             << std::setfill(' ') << std::setw(10) << " "

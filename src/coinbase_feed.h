@@ -2,7 +2,25 @@
 // Coinbase Advanced Trade API Level2 market data feed
 //-----------------------------------------------------
 
-#include "tls-ca-bundle-pem.h"
+#pragma once
+
+#include <atomic>
+#include <thread>
+#include <iostream>
+#include <string>
+#include <optional>
+#include <vector>
+#include <map>
+#include <cstdlib>
+#include <limits>
+#include <format>
+#include <tuple>
+#include <utility>
+#include <exception>
+
+#include <json/value.h>
+#include <json/reader.h>
+#include <json/writer.h>
 
 #include <boost/beast/core.hpp>
 #include <boost/beast/ssl.hpp>
@@ -12,8 +30,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl/stream.hpp>
 
-#include <bits/stdc++.h>
-
+#include "tls-ca-bundle-pem.h"
 #include "subscription.h"
 #include "orderBook.h"
 
@@ -23,23 +40,22 @@ namespace websocket = beast::websocket; // from <boost/beast/websocket.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 namespace ssl = boost::asio::ssl;       // from <boost/asio/ssl.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
-using namespace std;
 
 // https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-overview
 // https://docs.cdp.coinbase.com/coinbase-app/advanced-trade-apis/websocket/websocket-channels#level2-channel
 
-std::string host = "advanced-trade-ws.coinbase.com";
-auto const  port = "443";
-
 class coinbase_feed
 {
-protected:    
-    OrderBook   m_orderBook;
-    std::string m_secretsDir;
-    bool        m_processSnapshots;
-    bool        m_orderBookDump;
-    std::thread m_inputThread;    
-    
+    static inline const std::string host = "advanced-trade-ws.coinbase.com";
+    static inline const std::string port = "443";
+
+protected:
+    OrderBook         m_orderBook;
+    std::string       m_secretsDir;
+    bool              m_processSnapshots;
+    std::atomic<bool> m_orderBookDump;
+    std::thread       m_inputThread;
+
 public:
     coinbase_feed(const std::vector<std::string>& symbol_list,
                   const std::string& secrets_dir,
@@ -55,43 +71,45 @@ public:
     {
         for (;;)
         {
-            cout << "\nPress ENTER to change symbol..." << endl;
-            cin.ignore(numeric_limits<streamsize>::max(), '\n');
-            
-            m_orderBookDump = false;
-            
-            cout << "Valid symbols: ";
+            std::cout << "\nPress ENTER to change symbol..." << std::endl;
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+            m_orderBookDump.store(false, std::memory_order_release);
+
+            std::cout << "Valid symbols: ";
             for (const auto& sym : m_orderBook.getSymbolList())
-                cout << sym << ",";
-            cout << endl;
-            
-            cout << "Enter symbol: ";
-            string symbol;
-            getline(cin, symbol);
-            
-            if (m_orderBook.setSymbol(symbol))
+                std::cout << sym << ",";
+            std::cout << std::endl;
+
+            std::cout << "Enter symbol: ";
+            std::string symbol;
+            std::getline(std::cin, symbol);
+
+            std::optional<int> symbolId = m_orderBook.findSymbolId(symbol);
+            if (symbolId.has_value())
             {
-                m_orderBookDump = true;
+                m_orderBook.setSymbolId(symbolId.value());
+                m_orderBookDump.store(true, std::memory_order_release);
             }
             else
             {
-                cout << "Invalid symbol. Press ENTER to retry." << endl;
+                std::cout << "Invalid symbol. Press ENTER to retry." << std::endl;
             }
         }
     }
-    
+
     int run()
     {
         try
         {
             Json::Value root = coinbase::GetSubscribeMsg(m_orderBook.getSymbolList(), m_secretsDir);
             Json::FastWriter fastWriter;
-            string subscribe_msg = fastWriter.write(root); 
-            cout << "-------------------------------------" << endl;
-            cout << "subcribe\n";
-            cout << "-------------------------------------" << endl;
-            cout << root.toStyledString() << endl;
-            cout << "-------------------------------------" << endl;
+            std::string subscribe_msg = fastWriter.write(root);
+            std::cout << "-------------------------------------" << std::endl;
+            std::cout << "subcribe\n";
+            std::cout << "-------------------------------------" << std::endl;
+            std::cout << root.toStyledString() << std::endl;
+            std::cout << "-------------------------------------" << std::endl;
 
             //------------------------------------------------------------
             // From boost beast example: WebSocket SSL client, synchronous
@@ -127,7 +145,7 @@ public:
             // Update the host_ string. This will provide the value of the
             // Host HTTP header during the WebSocket handshake.
             // See https://tools.ietf.org/html/rfc7230#section-5.4
-            host += ':' + std::to_string(ep.port());
+            std::string host_ = host + ':' + std::to_string(ep.port());
 
             // Perform the SSL handshake
             ws.next_layer().handshake(ssl::stream_base::client);
@@ -142,13 +160,13 @@ public:
                               }));
 
             // Perform the websocket handshake
-            ws.handshake(host, "/");
+            ws.handshake(host_, "/");
 
             // Send the message
             ws.write(net::buffer(std::string(subscribe_msg)));
 
             size_t snapshotNum = 0;
-            map<string, pair<int,size_t>> snapshotsMap;
+            std::map<std::string, std::pair<int,size_t>> snapshotsMap;
 
             m_inputThread = std::thread(&coinbase_feed::readFromStdinThread, this);
 
@@ -168,8 +186,8 @@ public:
                 std::string data((const char*)buffer.data().data(), buffer.data().size());
                 reader.parse(data, root);
 
-                // cout << "+==============================+" << endl;
-                //cout << root.toStyledString() << endl;
+                // std::cout << "+==============================+" << std::endl;
+                // std::cout << root.toStyledString() << std::endl;
 
                 // The level2 channel sends a message with fields, type ("snapshot"
                 // or "update"), product_id, and updates.
@@ -214,7 +232,7 @@ public:
                          "sequence_num" : 0,
                          "timestamp" : "2026-02-27T13:54:08.898945082Z"
                        }
-                       
+
                        +=========================+
                            subscriptions
                        +=========================+
@@ -235,7 +253,7 @@ public:
                          "sequence_num" : 1,
                          "timestamp" : "2026-02-27T13:54:08.898945082Z"
                        }
-                       
+
                        +=========================+
                        update
                        +=========================+
@@ -290,7 +308,7 @@ public:
                                 }
                                 if (type == "snapshot")
                                 {
-                                    string sym = product_id.asString();
+                                    std::string sym = product_id.asString();
                                     snapshotsMap.emplace(
                                         std::piecewise_construct,
                                         std::forward_as_tuple(sym),
@@ -300,14 +318,15 @@ public:
                         }
                     }
 
-                    if (m_orderBookDump)
+                    if (m_orderBookDump.load(std::memory_order_acquire))
                     {
-                        m_orderBook.dump(10);
-                        cout << endl;
+                        int symbolId = m_orderBook.getSymbolId();
+                        m_orderBook.dump(symbolId, 10);
+                        std::cout << std::endl;
                         for (auto& [sym, data]: snapshotsMap)
-                            cout << format("snapshotsMap [sym,seqno,cnt]: [{},{},{}]\n", sym, data.first, data.second);
-                        cout << endl;
-                        m_orderBook.topOfBook();
+                            std::cout << std::format("snapshotsMap [sym,seqno,cnt]: [{},{},{}]\n", sym, data.first, data.second);
+                        std::cout << std::endl;
+                        m_orderBook.topOfBook(symbolId);
                     }
                 }
                 else
@@ -329,6 +348,6 @@ public:
             std::cerr << "Error: " << e.what() << std::endl;
             return EXIT_FAILURE;
         }
-        return EXIT_SUCCESS;        
+        return EXIT_SUCCESS;
     }
 };
