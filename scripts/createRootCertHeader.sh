@@ -15,7 +15,7 @@ sed -i -r \
     $FILENAME
 
 sed -i -r \
-    -e '1 i #ifndef CA_BUNDLE_TRUST_H\n#define CA_BUNDLE_TRUST_H\n\n#include <boost/asio/ssl.hpp>\n\n\/\/start1\n' \
+    -e '1 i #pragma once\n\n#include <boost/asio/ssl.hpp>\n\n\/\/start1\n' \
     $FILENAME
 
 sed -i -r \
@@ -23,7 +23,7 @@ sed -i -r \
     $FILENAME
 
 sed -i -r \
-    -e '/start2/a void load_root_certificates(ssl::context& ctx, boost::system::error_code& ec)\n{\n    std::string cert;\n\/\/start3' \
+    -e '/start2/a inline void load_root_certificates(ssl::context& ctx, boost::system::error_code& ec)\n{\n    std::string cert;\n\/\/start3' \
     $FILENAME
 
 sed -i -e '/\/\/start[123]/d' $FILENAME
@@ -49,4 +49,4 @@ echo "    if(ec)"                                                               
 echo "        throw boost::system::system_error{ec};"                                       >> $FILENAME
 echo "}"                                                                                    >> $FILENAME
 echo ""                                                                                     >> $FILENAME
-echo "#endif"                                                                               >> $FILENAME
+
