@@ -11,12 +11,10 @@
 #include <utility>
 #include <tuple>
 #include <sstream>
-#include <climits>
 #include <ctime>
 #include <functional>
 #include <cstdint>
 #include <cstdlib>
-#include <iterator>
 
 #include <json/value.h>
 
@@ -54,6 +52,8 @@ struct OrderBook
         }
         m_symbolId = 0;
     }
+
+    const L2PriceBook &getL2Book(int symbolId) const { return m_priceMap.at(symbolId); }
 
     void setSymbolId(int symbolId) { m_symbolId.store(symbolId, std::memory_order_release); }
 
@@ -140,102 +140,5 @@ struct OrderBook
             return false;
 
         return true;
-    }
-
-    double printSpread(const BidBook& bids, const AskBook& asks)
-    {
-        auto ask_px = asks.begin()->first;
-        auto bid_px = bids.begin()->first;
-        double spread = ask_px - bid_px;
-        std::cout << std::setfill(' ') << std::setw(20) << "Spread : " << ask_px - bid_px << std::endl;
-        return spread;
-    }
-
-    struct Product
-    {
-        std::string name;
-        std::string currency;
-    };
-
-    Product getSymbolNameAndCurrency(int symbolId)
-    {
-        const std::string& symbol = getSymbolStr(symbolId);
-
-        std::string::size_type n = symbol.find("-");
-        std::string name = symbol.substr(0, n);
-        std::string currency = symbol.substr(n+1);
-        return Product{name,currency};
-    }
-
-    void dump(int symbolId, size_t num_levels = UINT_MAX)
-    {
-        const L2PriceBook& l2_book = m_priceMap.at(symbolId);
-        const BidBook& bids = l2_book.bidbook;
-        const AskBook& asks = l2_book.askbook;
-
-        if (bids.size() == 0 || asks.size() == 0) return;
-
-        std::cout << "\e[2J\e[1;1H"; // Clears screen and moves cursor to top-left
-        std::cout << "************** ORDER BOOK ***************\n";
-        std::cout << std::fixed;
-
-        std::cout << "Asks size: " << asks.size() << std::endl;
-        std::cout << "Bids size: " << bids.size() << std::endl;
-
-        Product p = getSymbolNameAndCurrency(symbolId);
-        std::cout << std::setw(10) << "price (" << p.currency << ")" << std::setw(14) << "qty (" << p.name << ")" << std::endl;
-        std::cout
-            << std::setfill('-') << std::setw(10) << "-"
-            << std::setfill(' ') << std::setw(10) << " "
-            << std::setfill('-') << std::setw(10) << "-" << std::setfill(' ') << std::endl;
-
-        auto iter = asks.rbegin();
-        std::cout << std::setprecision(2) << std::setw(10) << iter->first << std::setw(20) << std::setprecision(8) << iter->second << "  LARGEST ASK\n";
-        if (asks.size() > num_levels)
-            std::advance(iter, asks.size() - num_levels);
-        while (iter != asks.rend())
-        {
-            std::cout << std::setprecision(2) << std::setw(10) << iter->first << std::setw(20) << std::setprecision(8) << iter->second << "  ASK\n";
-            iter++;
-        }
-
-        printSpread(bids, asks);
-
-        size_t num_bids = 1;
-
-        for (auto iter: bids)
-        {
-            std::cout << std::setprecision(2) << std::setw(10) << iter.first << std::setw(20) << std::setprecision(8) << iter.second << "  BID\n";
-            if (num_bids++ == num_levels)
-                break;
-        }
-        auto smallest_bid = std::prev(bids.end());
-        std::cout << std::setprecision(2) << std::setw(10) << smallest_bid->first << std::setw(20) << std::setprecision(8) << smallest_bid->second << "  SMALLEST BID\n";
-        std::cout << "*****************************************\n";
-    }
-
-    void topOfBook(int symbolId)
-    {
-        const L2PriceBook& l2_book = m_priceMap.at(symbolId);
-        const BidBook& bids = l2_book.bidbook;
-        const AskBook& asks = l2_book.askbook;
-
-        if (bids.size() == 0 || asks.size() == 0) return;
-
-        std::cout << "************** TOP OF BOOK **************\n";
-        Product p = getSymbolNameAndCurrency(symbolId);
-        std::cout << std::setw(10) << "price (" << p.currency << ")" << std::setw(14) << "qty (" << p.name << ")" << std::endl;
-        std::cout
-            << std::setfill('-') << std::setw(10) << "-"
-            << std::setfill(' ') << std::setw(10) << " "
-            << std::setfill('-') << std::setw(10) << "-" << std::setfill(' ') << std::endl;
-
-        auto bid = bids.begin();
-        auto ask = asks.begin();
-
-        std::cout << std::setprecision(4) << std::setw(10) << ask->first << std::setw(20) << std::setprecision(8) << ask->second << "  ASK\n";
-        printSpread(bids, asks);
-        std::cout << std::setprecision(4) << std::setw(10) << bid->first << std::setw(20) << std::setprecision(8) << bid->second << "  BID\n";
-        std::cout << "*****************************************\n";
     }
 };

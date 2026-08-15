@@ -33,6 +33,8 @@
 #include "tls-ca-bundle-pem.h"
 #include "subscription.h"
 #include "orderBook.h"
+#include "display.h"
+#include "products.h"
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -102,6 +104,9 @@ public:
     {
         try
         {
+            std::map<std::string, coinbase::ProductInfo> productInfoTable =
+                coinbase::BuildProductInfoTable(m_orderBook.getSymbolList(), m_secretsDir);
+            
             Json::Value root = coinbase::GetSubscribeMsg(m_orderBook.getSymbolList(), m_secretsDir);
             Json::FastWriter fastWriter;
             std::string subscribe_msg = fastWriter.write(root);
@@ -321,12 +326,18 @@ public:
                     if (m_orderBookDump.load(std::memory_order_acquire))
                     {
                         int symbolId = m_orderBook.getSymbolId();
-                        m_orderBook.dump(symbolId, 10);
+                        const auto& l2_book = m_orderBook.getL2Book(symbolId);
+                        const std::string& symbol = m_orderBook.getSymbolStr(symbolId);
+
+                        const auto& productInfo = productInfoTable.at(symbol);
+                        display::Dump(l2_book.bidbook, l2_book.askbook, symbol, productInfo, 10);
+
                         std::cout << std::endl;
                         for (auto& [sym, data]: snapshotsMap)
                             std::cout << std::format("snapshotsMap [sym,seqno,cnt]: [{},{},{}]\n", sym, data.first, data.second);
                         std::cout << std::endl;
-                        m_orderBook.topOfBook(symbolId);
+
+                        display::TopOfBook(l2_book.bidbook, l2_book.askbook, symbol, productInfo);
                     }
                 }
                 else
